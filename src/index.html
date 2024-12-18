@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta name="description" content="Webpage description goes here" />
+  <meta charset="utf-8">
+  <title>Change_me</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="author" content="">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+</head>
+
+
+<body>
+
+  <div id="app">
+    <div class="container">
+      <div class="table-container">
+        <div class="key" role="region" aria-label="Instructions, color selection, and grid controls">
+          <h2>How to use:</h2>
+          <ul>
+            <li><span class="key-action">Left-click or drag</span>: Draw</li>
+            <li><span class="key-action">Right-click or drag</span>: Erase</li>
+          </ul>
+          <div class="color-selector">
+            <h3>Select color:</h3>
+            <div class="color-options">
+              <button v-for="color in colors" :key="color" :style="{ backgroundColor: color }"
+                :class="{ 'selected': currentColor === color }" @click="setColor(color)"
+                :aria-label="`Select ${color} color`"></button>
+            </div>
+          </div>
+          <div class="grid-controls">
+            <button @click="clearGrid" class="clear-button" aria-label="Clear entire grid">
+              Clear Grid
+            </button>
+          </div>
+        </div>
+        <table @mousedown="startDrawing" @mouseup="stopDrawing" @mouseleave="stopDrawing" @contextmenu.prevent>
+          <tbody>
+            <tr v-for="row in 50" :key="row">
+              <td v-for="col in 50" :key="col"
+                :style="cellStates[`${row}-${col}`] ? { backgroundColor: cellStates[`${row}-${col}`] } : {}"
+                @mouseenter="handleCellHover(row, col, $event)" @mousedown.left.prevent="toggleCell(row, col, true)"
+                @mousedown.right.prevent="toggleCell(row, col, false)" role="gridcell"
+                :aria-selected="cellStates[`${row}-${col}`] ? 'true' : 'false'"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+<script>
+  const { createApp } = Vue
+
+  createApp({
+    setup() {
+    },
+    data() {
+      return {
+        isDrawing: false,
+        isErasing: false,
+        cellStates: {},
+        colors: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'],
+        currentColor: '#3b82f6'
+      }
+
+    },
+    methods: {
+      startDrawing(event) {
+        this.isDrawing = true
+        this.isErasing = event.button === 2 // Right-click
+      },
+      stopDrawing() {
+        this.isDrawing = false
+        this.isErasing = false
+      },
+      toggleCell(row, col, isDrawing) {
+        const key = `${row}-${col}`
+        this.cellStates[key] = isDrawing ? this.currentColor : null
+      },
+      handleCellHover(row, col, event) {
+        if (this.isDrawing) {
+          this.toggleCell(row, col, !this.isErasing)
+        }
+      },
+      setColor(color) {
+        this.currentColor = color
+      },
+      async clearGrid() {
+        const response = await fetch("http://10.0.0.171:5000/", {
+          method: "GET",
+          // body: JSON.stringify({ username: "example" }),
+          headers: {},
+        });
+        Object.keys(this.cellStates).forEach(key => {
+          this.cellStates[key] = null
+        })
+
+      }
+    }
+  }).mount('#app')
+</script>
+
+</html>
