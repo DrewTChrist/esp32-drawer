@@ -102,6 +102,34 @@ async fn _print_request<'a, const S: usize>(socket: &mut TcpSocket<'a>) {
     }
 }
 
+async fn get_request<'a, 'b>(socket: &mut TcpSocket<'a>, buffer: &'b mut [u8]) -> &'b str {
+    let mut pos = 0;
+    loop {
+        match socket.read(buffer).await {
+            Ok(0) => {
+                println!("AP read EOF\r\n");
+                break;
+            }
+            Ok(len) => match core::str::from_utf8(&buffer[..(pos + len)]) {
+                Ok(to_print) => {
+                    if to_print.contains("\r\n\r\n") {
+                        break;
+                    }
+                    pos += len;
+                }
+                Err(e) => {
+                    println!("AP read error: {:?}\r\n", e);
+                }
+            },
+            Err(e) => {
+                println!("AP read error: {:?}\r\n", e);
+                break;
+            }
+        };
+    }
+    core::str::from_utf8(buffer).unwrap_or(&"")
+}
+
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
@@ -182,9 +210,6 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
         data: [Row { data: [0; 10] }; 10],
     };
 
-    let foo: u64 = 0b000000000000000000000000000000000000000000000000;
-
-
     loop {
         let r = socket
             .accept(IpListenEndpoint {
@@ -198,33 +223,9 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
             continue;
         }
 
-        let mut buffer = [0; 512];
-        let mut pos = 0;
-        loop {
-            match socket.read(&mut buffer).await {
-                Ok(0) => {
-                    println!("AP read EOF\r\n");
-                    break;
-                }
-                Ok(len) => match core::str::from_utf8(&buffer[..(pos + len)]) {
-                    Ok(to_print) => {
-                        if to_print.contains("\r\n\r\n") {
-                            break;
-                        }
-                        pos += len;
-                    }
-                    Err(e) => {
-                        println!("AP read error: {:?}\r\n", e);
-                    }
-                },
-                Err(e) => {
-                    println!("AP read error: {:?}\r\n", e);
-                    break;
-                }
-            };
-        }
+        let mut buffer = [0u8; 512];
+        let request_content = get_request(&mut socket, &mut buffer).await;
 
-        let request_content = core::str::from_utf8(&buffer).unwrap_or(&"");
         // println!("request_content: {:?}", request_content);
         let mut lines = request_content.split("\r\n");
 
@@ -303,34 +304,9 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
             continue;
         }
 
-        let mut buffer = [0; 512];
-        let mut pos = 0;
-        loop {
-            println!("web_serve_loop: reading..\r\n");
-            match socket.read(&mut buffer).await {
-                Ok(0) => {
-                    println!("AP read EOF\r\n");
-                    break;
-                }
-                Ok(len) => match core::str::from_utf8(&buffer[..(pos + len)]) {
-                    Ok(to_print) => {
-                        if to_print.contains("\r\n\r\n") {
-                            break;
-                        }
-                        pos += len;
-                    }
-                    Err(e) => {
-                        println!("AP read error: {:?}\r\n", e);
-                    }
-                },
-                Err(e) => {
-                    println!("AP read error: {:?}\r\n", e);
-                    break;
-                }
-            };
-        }
+        let mut buffer = [0u8; 512];
+        let request_content = get_request(&mut socket, &mut buffer).await;
 
-        let request_content = core::str::from_utf8(&buffer).unwrap_or(&"");
         let mut lines = request_content.split("\r\n");
 
         let first_line = lines.nth(0).unwrap_or(&"");
