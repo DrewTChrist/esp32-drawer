@@ -249,41 +249,35 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
 
         println!("backend_loop: {:?} {:?}\r\n", method, path);
 
-        match (method, path) {
-            ("GET", "/data") => {
-                let mut buffer = [0; (50 * 50) + 1024];
-                match serde_json_core::to_slice(&grid_data, &mut buffer[..]) {
-                    Ok(len) => {
-                        if let Err(e) = socket.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await {
-                            println!("AP write error: {:?}\r\n", e);
+        match method {
+            "GET" => match path {
+                "/data" => {
+                    let mut buffer = [0; (50 * 50) + 1024];
+                    match serde_json_core::to_slice(&grid_data, &mut buffer[..]) {
+                        Ok(len) => {
+                            send_response_status(&mut socket, 200).await;
+                            if let Err(e) = socket.write_all(&buffer[..len]).await {
+                                println!("AP write error: {:?}\r\n", e);
+                            }
+                            println!("Bytes converted: {:?}\r\n", len);
                         }
-                        if let Err(e) = socket.write_all(&buffer[..len]).await {
-                            println!("AP write error: {:?}\r\n", e);
-                        }
-                        println!("Bytes converted: {:?}\r\n", len);
-                    }
-                    Err(e) => {
-                        println!("{:?}\r\n", e);
-                        if let Err(e) = socket
-                            .write_all(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
-                            .await
-                        {
-                            println!("AP write error: {:?}\r\n", e);
+                        Err(e) => {
+                            println!("{:?}\r\n", e);
+                            send_response_status(&mut socket, 500).await;
                         }
                     }
                 }
-            }
-            ("POST", "/data") => {
-                println!("There is data to receive\r\n");
-                if let Err(e) = socket.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await {
-                    println!("AP write error: {:?}\r\n", e);
+                _ => send_response_status(&mut socket, 404).await,
+            },
+            "POST" => match path {
+                "/data" => {
+                    println!("There is data to receive\r\n");
+                    send_response_status(&mut socket, 200).await;
                 }
-            }
-            _ => {
-                if let Err(e) = socket.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n").await {
-                    println!("AP write error: {:?}\r\n", e);
-                }
-            }
+                "/clear" => send_response_status(&mut socket, 200).await,
+                _ => send_response_status(&mut socket, 404).await,
+            },
+            _ => send_response_status(&mut socket, 404).await,
         }
 
         let r = socket.flush().await;
