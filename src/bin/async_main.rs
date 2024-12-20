@@ -3,10 +3,11 @@
 #![no_std]
 #![no_main]
 
+use core::fmt::Write;
 use embassy_executor::Spawner;
 use embassy_net::{tcp::TcpSocket, IpAddress, IpListenEndpoint, Stack, StackResources};
 use embassy_time::{Duration, Timer};
-use embedded_io_async::Write;
+use embedded_io_async::Write as EmbeddedIoWrite;
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::{prelude::*, rng::Rng, timer::timg::TimerGroup};
@@ -142,6 +143,32 @@ async fn send_response_status<'a>(socket: &mut TcpSocket<'a>, status_code: usize
         if let Err(e) = socket.write_all(response).await {
             println!("AP write error: {:?}\r\n", e);
         }
+    }
+}
+
+struct ResponseBuffer<const S: usize> {
+    headers: [u8; S],
+    pos: usize,
+}
+
+impl<const S: usize> ResponseBuffer<S> {
+    fn new() -> Self {
+        Self {
+            headers: [0; S],
+            pos: 0
+        }
+    }
+}
+
+impl<const S: usize> Write for ResponseBuffer<S> {
+    fn write_str(&mut self, in_str: &str) -> core::fmt::Result {
+        let bytes = in_str.as_bytes();
+        if (self.pos + bytes.len()) > self.headers.len() {
+            return Err(core::fmt::Error);
+        }
+        self.headers[self.pos..(self.pos + bytes.len())].clone_from_slice(bytes);
+        self.pos += bytes.len();
+        Ok(())
     }
 }
 
