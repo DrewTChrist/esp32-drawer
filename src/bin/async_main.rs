@@ -25,6 +25,8 @@ use esp_wifi::{
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 
+use esp32_drawer::buffer::ResponseBuffer;
+
 // When you are okay with using a nightly compiler it's better to use https://docs.rs/static_cell/2.1.0/static_cell/macro.make_static.html
 macro_rules! mk_static {
     ($t:ty,$val:expr) => {{
@@ -153,32 +155,6 @@ async fn send_response_buffer<'a, const S: usize>(
 ) {
     if let Err(e) = socket.write_all(&buffer.headers).await {
         println!("AP write error: {:?}\r\n", e);
-    }
-}
-
-struct ResponseBuffer<const S: usize> {
-    headers: [u8; S],
-    pos: usize,
-}
-
-impl<const S: usize> ResponseBuffer<S> {
-    fn new() -> Self {
-        Self {
-            headers: [0; S],
-            pos: 0,
-        }
-    }
-}
-
-impl<const S: usize> Write for ResponseBuffer<S> {
-    fn write_str(&mut self, in_str: &str) -> core::fmt::Result {
-        let bytes = in_str.as_bytes();
-        if (self.pos + bytes.len()) > self.headers.len() {
-            return Err(core::fmt::Error);
-        }
-        self.headers[self.pos..(self.pos + bytes.len())].clone_from_slice(bytes);
-        self.pos += bytes.len();
-        Ok(())
     }
 }
 
