@@ -311,9 +311,9 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
         if let Err(e) = r {
             println!("AP flush error: {:?}\r\n", e);
         }
-        Timer::after(Duration::from_millis(10)).await;
+        Timer::after(Duration::from_millis(50)).await;
         socket.close();
-        Timer::after(Duration::from_millis(10)).await;
+        Timer::after(Duration::from_millis(50)).await;
         socket.abort();
     }
 }
@@ -365,9 +365,9 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
         if let Err(e) = r {
             println!("AP flush error: {:?}\r\n", e);
         }
-        Timer::after(Duration::from_millis(10)).await;
+        Timer::after(Duration::from_millis(50)).await;
         socket.close();
-        Timer::after(Duration::from_millis(10)).await;
+        Timer::after(Duration::from_millis(50)).await;
         socket.abort();
     }
 }
