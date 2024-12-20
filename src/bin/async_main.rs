@@ -130,6 +130,21 @@ async fn get_request<'a, 'b>(socket: &mut TcpSocket<'a>, buffer: &'b mut [u8]) -
     core::str::from_utf8(buffer).unwrap_or(&"")
 }
 
+async fn send_response_status<'a>(socket: &mut TcpSocket<'a>, status_code: usize) {
+    let mut status: Option<&[u8]> = None;
+    match status_code {
+        200 => status = Some(b"HTTP/1.1 200 OK\r\n\r\n"),
+        500 => status = Some(b"HTTP/1.1 500 Internal Server Error\r\n\r\n"),
+        404 => status = Some(b"HTTP/1.1 404 Not Found\r\n\r\n"),
+        _ => {}
+    }
+    if let Some(response) = status {
+        if let Err(e) = socket.write_all(response).await {
+            println!("AP write error: {:?}\r\n", e);
+        }
+    }
+}
+
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
