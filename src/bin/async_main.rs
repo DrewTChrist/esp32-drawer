@@ -146,6 +146,15 @@ async fn send_response_status<'a>(socket: &mut TcpSocket<'a>, status_code: usize
     }
 }
 
+async fn send_response_buffer<'a, const S: usize>(
+    socket: &mut TcpSocket<'a>,
+    buffer: ResponseBuffer<S>,
+) {
+    if let Err(e) = socket.write_all(&buffer.headers).await {
+        println!("AP write error: {:?}\r\n", e);
+    }
+}
+
 struct ResponseBuffer<const S: usize> {
     headers: [u8; S],
     pos: usize,
@@ -155,7 +164,7 @@ impl<const S: usize> ResponseBuffer<S> {
     fn new() -> Self {
         Self {
             headers: [0; S],
-            pos: 0
+            pos: 0,
         }
     }
 }
