@@ -321,24 +321,17 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
         let method = parts.nth(0).unwrap_or(&"");
         let path = parts.nth(0).unwrap_or(&"");
 
-        match (method, path_to_file(path)) {
-            ("GET", WebServeFile::File(contents)) => {
-                if let Err(e) = socket.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await {
-                    println!("AP write error: {:?}\r\n", e);
+        match method {
+            "GET" => match path_to_file(path) {
+                WebServeFile::File(contents) => {
+                    send_response_status(&mut socket, 200).await;
+                    if let Err(e) = socket.write_all(contents).await {
+                        println!("AP write error: {:?}\r\n", e);
+                    }
                 }
-                if let Err(e) = socket.write_all(contents).await {
-                    println!("AP write error: {:?}\r\n", e);
-                }
-            }
-            ("GET", WebServeFile::NotFound) => {
-                if let Err(e) = socket.write_all(b"HTTP/1.1 404 Not Found\r\n\r\n").await {
-                    println!("AP write error: {:?}\r\n", e);
-                }
-            }
-            (m, w) => {
-                println!("{:?}\r\n", m);
-                println!("{:?}\r\n", w);
-            }
+                WebServeFile::NotFound => send_response_status(&mut socket, 404).await,
+            },
+            _ => send_response_status(&mut socket, 404).await,
         }
 
         let r = socket.flush().await;
