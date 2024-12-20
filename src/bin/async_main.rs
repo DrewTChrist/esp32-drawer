@@ -64,7 +64,7 @@ enum WebServeFile<'a> {
 const INDEX: WebServeFile<'static> = WebServeFile::File(include_bytes!("../index.html"));
 const CSS: WebServeFile<'static> = WebServeFile::File(include_bytes!("../css/style.css"));
 
-fn match_path(path: &str) -> WebServeFile {
+fn path_to_file(path: &str) -> WebServeFile {
     match path {
         "/" => INDEX,
         "/css/style.css" => CSS,
@@ -203,8 +203,6 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(Duration::from_millis(500)).await;
     }
 
-    // let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
-
     spawner.spawn(web_serve_loop(&stack)).ok();
     spawner.spawn(backend_loop(&stack)).ok();
 
@@ -329,7 +327,7 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
         let method = parts.nth(0).unwrap_or(&"");
         let path = parts.nth(0).unwrap_or(&"");
 
-        match (method, match_path(path)) {
+        match (method, path_to_file(path)) {
             ("GET", WebServeFile::File(contents)) => {
                 if let Err(e) = socket.write_all(b"HTTP/1.1 200 OK\r\n\r\n").await {
                     println!("AP write error: {:?}\r\n", e);
