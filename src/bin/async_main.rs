@@ -4,6 +4,7 @@
 #![no_main]
 
 use core::fmt::Write;
+
 use embassy_executor::Spawner;
 use embassy_net::{tcp::TcpSocket, IpAddress, IpListenEndpoint, Stack, StackResources};
 use embassy_time::{Duration, Timer};
@@ -273,6 +274,7 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
         }
 
         let mut buffer = [0u8; 512];
+        let mut response_buffer = ResponseBuffer::<256>::new();
         let request_content = get_request(&mut socket, &mut buffer).await;
 
         // println!("request_content: {:?}", request_content);
@@ -298,12 +300,24 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
                             println!("Bytes converted: {:?}\r\n", len);
                         }
                         Err(e) => {
-                            println!("{:?}\r\n", e);
-                            send_response_status(&mut socket, 500).await;
+                            write!(
+                                &mut response_buffer,
+                                "HTTP/1.1 500 Internal Server Error\r\n"
+                            );
+                            write!(
+                                &mut response_buffer,
+                                "Access-Control-Allow-Origin: *\r\n\r\n"
+                            );
                         }
                     }
                 }
-                _ => send_response_status(&mut socket, 404).await,
+                _ => {
+                    write!(&mut response_buffer, "HTTP/1.1 404 Not Found\r\n");
+                    write!(
+                        &mut response_buffer,
+                        "Access-Control-Allow-Origin: *\r\n\r\n"
+                    );
+                }
             },
             "POST" => match path {
                 "/data" => {
@@ -311,10 +325,24 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
                     send_response_status(&mut socket, 200).await;
                 }
                 "/clear" => send_response_status(&mut socket, 200).await,
-                _ => send_response_status(&mut socket, 404).await,
+                _ => {
+                    write!(&mut response_buffer, "HTTP/1.1 404 Not Found\r\n");
+                    write!(
+                        &mut response_buffer,
+                        "Access-Control-Allow-Origin: *\r\n\r\n"
+                    );
+                }
             },
-            _ => send_response_status(&mut socket, 404).await,
+            _ => {
+                write!(&mut response_buffer, "HTTP/1.1 404 Not Found\r\n");
+                write!(
+                    &mut response_buffer,
+                    "Access-Control-Allow-Origin: *\r\n\r\n"
+                );
+            }
         }
+
+        send_response_buffer(&mut socket, response_buffer).await;
 
         let r = socket.flush().await;
         if let Err(e) = r {
