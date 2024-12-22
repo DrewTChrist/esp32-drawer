@@ -155,6 +155,31 @@ async fn send_response_status<'a>(socket: &mut TcpSocket<'a>, status_code: usize
     }
 }
 
+fn write_response_status<const S: usize>(
+    response_buffer: &mut ResponseBuffer<S>,
+    status_code: usize,
+) {
+    let mut status: &str = "";
+    match status_code {
+        200 => status = "HTTP/1.1 200 OK\r\n",
+        500 => status = "HTTP/1.1 500 Internal Server Error\r\n",
+        404 => status = "HTTP/1.1 404 Not Found\r\n",
+        _ => {}
+    }
+    if let Err(e) = write!(response_buffer, "{}", status) {
+        println!("Error writing response status: {:?}", e);
+    }
+}
+
+fn write_response_headers<const S: usize>(response_buffer: &mut ResponseBuffer<S>) {
+    if let Err(e) = write!(response_buffer, "Access-Control-Allow-Origin: *\r\n") {
+        println!("Error writing response headers: {:?}", e);
+    }
+    if let Err(e) = write!(response_buffer, "\r\n") {
+        println!("Error writing response headers: {:?}", e);
+    }
+}
+
 async fn send_response_buffer<'a, const S: usize>(
     socket: &mut TcpSocket<'a>,
     buffer: ResponseBuffer<S>,
@@ -270,66 +295,42 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
                     let mut buffer = [0; (50 * 50) + 1024];
                     match serde_json_core::to_slice(&grid_data, &mut buffer[..]) {
                         Ok(len) => {
-                            write!(&mut response_buffer, "HTTP/1.1 200 OK\r\n");
-                            write!(
-                                &mut response_buffer,
-                                "Access-Control-Allow-Origin: *\r\n\r\n"
-                            );
+                            write_response_status(&mut response_buffer, 200);
+                            write_response_headers(&mut response_buffer);
                             if let Err(e) = socket.write_all(&buffer[..len]).await {
                                 println!("AP write error: {:?}\r\n", e);
                             }
-                            println!("Bytes converted: {:?}\r\n", len);
+                            // println!("Bytes converted: {:?}\r\n", len);
                         }
                         Err(_) => {
-                            write!(
-                                &mut response_buffer,
-                                "HTTP/1.1 500 Internal Server Error\r\n"
-                            );
-                            write!(
-                                &mut response_buffer,
-                                "Access-Control-Allow-Origin: *\r\n\r\n"
-                            );
+                            write_response_status(&mut response_buffer, 500);
+                            write_response_headers(&mut response_buffer);
                         }
                     }
                 }
                 _ => {
-                    write!(&mut response_buffer, "HTTP/1.1 404 Not Found\r\n");
-                    write!(
-                        &mut response_buffer,
-                        "Access-Control-Allow-Origin: *\r\n\r\n"
-                    );
+                    write_response_status(&mut response_buffer, 404);
+                    write_response_headers(&mut response_buffer);
                 }
             },
             "POST" => match path {
                 "/data" => {
                     println!("There is data to receive\r\n");
-                    write!(&mut response_buffer, "HTTP/1.1 200 OK\r\n");
-                    write!(
-                        &mut response_buffer,
-                        "Access-Control-Allow-Origin: *\r\n\r\n"
-                    );
+                    write_response_status(&mut response_buffer, 200);
+                    write_response_headers(&mut response_buffer);
                 }
                 "/clear" => {
-                    write!(&mut response_buffer, "HTTP/1.1 200 OK\r\n");
-                    write!(
-                        &mut response_buffer,
-                        "Access-Control-Allow-Origin: *\r\n\r\n"
-                    );
+                    write_response_status(&mut response_buffer, 200);
+                    write_response_headers(&mut response_buffer);
                 }
                 _ => {
-                    write!(&mut response_buffer, "HTTP/1.1 404 Not Found\r\n");
-                    write!(
-                        &mut response_buffer,
-                        "Access-Control-Allow-Origin: *\r\n\r\n"
-                    );
+                    write_response_status(&mut response_buffer, 404);
+                    write_response_headers(&mut response_buffer);
                 }
             },
             _ => {
-                write!(&mut response_buffer, "HTTP/1.1 404 Not Found\r\n");
-                write!(
-                    &mut response_buffer,
-                    "Access-Control-Allow-Origin: *\r\n\r\n"
-                );
+                write_response_status(&mut response_buffer, 404);
+                write_response_headers(&mut response_buffer);
             }
         }
 
