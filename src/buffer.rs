@@ -25,4 +25,3 @@ impl<const S: usize> Write for ResponseBuffer<S> {
         Ok(())
     }
 }
-

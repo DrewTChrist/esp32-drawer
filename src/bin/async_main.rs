@@ -3,8 +3,10 @@
 #![no_std]
 #![no_main]
 
+/// Core imports
 use core::fmt::Write;
 
+/// External imports
 use embassy_executor::Spawner;
 use embassy_net::{tcp::TcpSocket, IpAddress, IpListenEndpoint, Stack, StackResources};
 use embassy_time::{Duration, Timer};
@@ -25,6 +27,7 @@ use esp_wifi::{
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 
+/// Crate imports
 use esp32_drawer::buffer::ResponseBuffer;
 
 // When you are okay with using a nightly compiler it's better to use https://docs.rs/static_cell/2.1.0/static_cell/macro.make_static.html
@@ -40,11 +43,14 @@ macro_rules! mk_static {
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
-const ADDRESS: Option<IpAddress> = None;
-const PORT: u16 = 8080;
-const ENDPOINT: IpListenEndpoint = IpListenEndpoint {
-    addr: ADDRESS,
-    port: PORT,
+const WEB_ENDPOINT: IpListenEndpoint = IpListenEndpoint {
+    addr: None,
+    port: 8080,
+};
+
+const BACKEND_ENDPOINT: IpListenEndpoint = IpListenEndpoint {
+    addr: None,
+    port: 5000,
 };
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -237,12 +243,7 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
     };
 
     loop {
-        let r = socket
-            .accept(IpListenEndpoint {
-                addr: ADDRESS,
-                port: 5000,
-            })
-            .await;
+        let r = socket.accept(BACKEND_ENDPOINT).await;
 
         if let Err(e) = r {
             println!("connect error: {:?}\r\n", e);
@@ -342,7 +343,7 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
     loop {
         println!("Wait for connection...\r\n");
 
-        let r = socket.accept(ENDPOINT).await;
+        let r = socket.accept(WEB_ENDPOINT).await;
 
         println!("Connected...\r\n");
 
