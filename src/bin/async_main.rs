@@ -8,7 +8,7 @@ use core::fmt::Write;
 
 /// External imports
 use embassy_executor::Spawner;
-use embassy_net::{tcp::TcpSocket, IpAddress, IpListenEndpoint, Stack, StackResources};
+use embassy_net::{tcp::TcpSocket, IpListenEndpoint, Stack, StackResources};
 use embassy_time::{Duration, Timer};
 use embedded_io_async::Write as EmbeddedIoWrite;
 use esp_alloc as _;
@@ -238,7 +238,7 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
     let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
     socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
-    let mut grid_data = GridData {
+    let grid_data = GridData {
         data: [Row { data: [0; 10] }; 10],
     };
 
@@ -270,13 +270,17 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
                     let mut buffer = [0; (50 * 50) + 1024];
                     match serde_json_core::to_slice(&grid_data, &mut buffer[..]) {
                         Ok(len) => {
-                            send_response_status(&mut socket, 200).await;
+                            write!(&mut response_buffer, "HTTP/1.1 200 OK\r\n");
+                            write!(
+                                &mut response_buffer,
+                                "Access-Control-Allow-Origin: *\r\n\r\n"
+                            );
                             if let Err(e) = socket.write_all(&buffer[..len]).await {
                                 println!("AP write error: {:?}\r\n", e);
                             }
                             println!("Bytes converted: {:?}\r\n", len);
                         }
-                        Err(e) => {
+                        Err(_) => {
                             write!(
                                 &mut response_buffer,
                                 "HTTP/1.1 500 Internal Server Error\r\n"
@@ -299,9 +303,19 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
             "POST" => match path {
                 "/data" => {
                     println!("There is data to receive\r\n");
-                    send_response_status(&mut socket, 200).await;
+                    write!(&mut response_buffer, "HTTP/1.1 200 OK\r\n");
+                    write!(
+                        &mut response_buffer,
+                        "Access-Control-Allow-Origin: *\r\n\r\n"
+                    );
                 }
-                "/clear" => send_response_status(&mut socket, 200).await,
+                "/clear" => {
+                    write!(&mut response_buffer, "HTTP/1.1 200 OK\r\n");
+                    write!(
+                        &mut response_buffer,
+                        "Access-Control-Allow-Origin: *\r\n\r\n"
+                    );
+                }
                 _ => {
                     write!(&mut response_buffer, "HTTP/1.1 404 Not Found\r\n");
                     write!(
