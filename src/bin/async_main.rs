@@ -182,9 +182,9 @@ fn write_response_headers<const S: usize>(response_buffer: &mut ResponseBuffer<S
 
 async fn send_response_buffer<'a, const S: usize>(
     socket: &mut TcpSocket<'a>,
-    buffer: ResponseBuffer<S>,
+    response_buffer: ResponseBuffer<S>,
 ) {
-    if let Err(e) = socket.write_all(&buffer.headers).await {
+    if let Err(e) = socket.write_all(response_buffer.buffer()).await {
         println!("AP write error: {:?}\r\n", e);
     }
 }
