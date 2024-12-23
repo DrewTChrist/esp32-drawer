@@ -39,12 +39,12 @@
         </div>
         <table @mousedown="startDrawing" @mouseup="stopDrawing" @mouseleave="stopDrawing" @contextmenu.prevent>
           <tbody>
-            <tr v-for="row in 50" :key="row">
-              <td v-for="col in 50" :key="col"
-                :style="cellStates[`${row}-${col}`] ? { backgroundColor: cellStates[`${row}-${col}`] } : {}"
+            <tr v-for="row in cellStates.length()" :key="row">
+              <td v-for="col in row.length()" :key="col"
+                :style="cellStates[row][col] ? { backgroundColor: cellStates[row][col] } : {}"
                 @mouseenter="handleCellHover(row, col, $event)" @mousedown.left.prevent="toggleCell(row, col, true)"
                 @mousedown.right.prevent="toggleCell(row, col, false)" role="gridcell"
-                :aria-selected="cellStates[`${row}-${col}`] ? 'true' : 'false'"></td>
+                :aria-selected="cellStates[row][col] ? 'true' : 'false'"></td>
             </tr>
           </tbody>
         </table>
@@ -59,14 +59,27 @@
     setup() {
     },
     data() {
+      const numCols = 50
+      const numRows = 50
       return {
         isDrawing: false,
         isErasing: false,
-        cellStates: {},
+        numRows,
+        numCols,
+        cellStates: Array.from(Array(numRows), () => new Array(numCols).fill(null)),
         colors: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'],
         currentColor: '#3b82f6'
       }
-
+    },
+    async mounted() {
+      const response = await fetch("http://10.0.0.171:5000/data", {
+        method: "GET",
+        headers: {},
+      }).then(data => {
+        console.log(data)
+      }).catch((error) => {
+        console.log(`Error: ${error}`)
+      })
     },
     methods: {
       startDrawing(event) {
@@ -78,8 +91,7 @@
         this.isErasing = false
       },
       toggleCell(row, col, isDrawing) {
-        const key = `${row}-${col}`
-        this.cellStates[key] = isDrawing ? this.currentColor : null
+        this.cellStates[row][col] = isDrawing ? this.currentColor : null
       },
       handleCellHover(row, col, event) {
         if (this.isDrawing) {
@@ -89,16 +101,12 @@
       setColor(color) {
         this.currentColor = color
       },
-      async clearGrid() {
-        const response = await fetch("http://10.0.0.171:5000/", {
-          method: "GET",
-          // body: JSON.stringify({ username: "example" }),
-          headers: {},
-        });
-        Object.keys(this.cellStates).forEach(key => {
-          this.cellStates[key] = null
+      clearGrid() {
+        this.cellStates.forEach(function (row, rowIdx, arr) {
+          row.forEach(function (col, colIdx) {
+            arr[rowIdx][colIdx] = null;
+          })
         })
-
       }
     }
   }).mount('#app')
