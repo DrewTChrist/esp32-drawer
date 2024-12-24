@@ -14,11 +14,11 @@ impl<const S: usize> ResponseBuffer<S> {
     }
 
     pub fn buffer(&self) -> &[u8] {
-        &self.buf[self.pos..]
+        &self.buf[..self.pos]
     }
 
     pub fn buffer_mut(&mut self) -> &mut [u8] {
-        &mut self.buf[self.pos..]
+        &mut self.buf[..self.pos]
     }
 
     pub fn write(&mut self, bytes: &[u8]) -> Result<(), &str> {
