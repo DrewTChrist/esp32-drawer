@@ -39,8 +39,8 @@
         </div>
         <table @mousedown="startDrawing" @mouseup="stopDrawing" @mouseleave="stopDrawing" @contextmenu.prevent>
           <tbody>
-            <tr v-for="row in cellStates.length()" :key="row">
-              <td v-for="col in row.length()" :key="col"
+            <tr v-for="row in cellStates.length" :key="row">
+              <td v-for="col in row.length" :key="col"
                 :style="cellStates[row][col] ? { backgroundColor: cellStates[row][col] } : {}"
                 @mouseenter="handleCellHover(row, col, $event)" @mousedown.left.prevent="toggleCell(row, col, true)"
                 @mousedown.right.prevent="toggleCell(row, col, false)" role="gridcell"
