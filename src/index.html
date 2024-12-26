@@ -39,12 +39,12 @@
         </div>
         <table @mousedown="startDrawing" @mouseup="stopDrawing" @mouseleave="stopDrawing" @contextmenu.prevent>
           <tbody>
-            <tr v-for="row in cellStates.length" :key="row">
-              <td v-for="col in row.length" :key="col"
-                :style="cellStates[row][col] ? { backgroundColor: cellStates[row][col] } : {}"
-                @mouseenter="handleCellHover(row, col, $event)" @mousedown.left.prevent="toggleCell(row, col, true)"
-                @mousedown.right.prevent="toggleCell(row, col, false)" role="gridcell"
-                :aria-selected="cellStates[row][col] ? 'true' : 'false'"></td>
+            <tr v-for="(row, rIdx) in cellStates" :key="row">
+              <td v-for="(col, cIdx) in row" :key="col"
+                :style="cellStates[rIdx][cIdx] ? { backgroundColor: cellStates[rIdx][cIdx] } : {}"
+                @mouseenter="handleCellHover(rIdx, cIdx, $event)" @mousedown.left.prevent="toggleCell(rIdx, cIdx, true)"
+                @mousedown.right.prevent="toggleCell(rIdx, cIdx, false)" role="gridcell"
+                :aria-selected="cellStates[rIdx][cIdx] ? 'true' : 'false'"></td>
             </tr>
           </tbody>
         </table>
