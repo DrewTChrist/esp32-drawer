@@ -56,12 +56,12 @@
   const { createApp } = Vue
 
   createApp({
-    setup() {
-    },
     data() {
+      const hostname = window.location.hostname
       const numCols = 50
       const numRows = 50
       return {
+        address: `http://${hostname}:5000`,
         isDrawing: false,
         isErasing: false,
         numRows,
@@ -72,11 +72,15 @@
       }
     },
     async mounted() {
-      const response = await fetch("http://10.0.0.171:5000/data", {
+      var thisRef = this
+      await fetch(`${this.address}/data`, {
         method: "GET",
         headers: {},
-      }).then(data => {
-        console.log(data)
+      }).then(async (data) => {
+        const response = await data.json()
+        response.coords.forEach(function (coord) {
+          thisRef.toggleCell(coord[0], coord[1], true)
+        })
       }).catch((error) => {
         console.log(`Error: ${error}`)
       })
@@ -101,11 +105,19 @@
       setColor(color) {
         this.currentColor = color
       },
-      clearGrid() {
+      async clearGrid() {
         this.cellStates.forEach(function (row, rowIdx, arr) {
           row.forEach(function (col, colIdx) {
             arr[rowIdx][colIdx] = null;
           })
+        })
+        await fetch(`${this.address}/clear`, {
+          method: "POST",
+          headers: {},
+        }).then(data => {
+          console.log(data)
+        }).catch(error => {
+          console.log(`Error: ${error}`)
         })
       }
     }
