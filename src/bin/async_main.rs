@@ -1,5 +1,3 @@
-//!
-
 #![no_std]
 #![no_main]
 
@@ -218,12 +216,12 @@ async fn main(spawner: Spawner) -> ! {
 
     let init = &*mk_static!(
         EspWifiController<'static>,
-        init(timg0.timer0, rng.clone(), peripherals.RADIO_CLK).unwrap()
+        init(timg0.timer0, rng, peripherals.RADIO_CLK).unwrap()
     );
 
     let wifi = peripherals.WIFI;
     let (wifi_interface, controller) =
-        esp_wifi::wifi::new_with_mode(&init, wifi, WifiStaDevice).unwrap();
+        esp_wifi::wifi::new_with_mode(init, wifi, WifiStaDevice).unwrap();
 
     let timg1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timg1.timer0);
@@ -244,7 +242,7 @@ async fn main(spawner: Spawner) -> ! {
     );
 
     spawner.spawn(connection(controller)).ok();
-    spawner.spawn(net_task(&stack)).ok();
+    spawner.spawn(net_task(stack)).ok();
 
     loop {
         if stack.is_link_up() {
@@ -262,8 +260,8 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(Duration::from_millis(500)).await;
     }
 
-    spawner.spawn(web_serve_loop(&stack)).ok();
-    spawner.spawn(backend_loop(&stack)).ok();
+    spawner.spawn(web_serve_loop(stack)).ok();
+    spawner.spawn(backend_loop(stack)).ok();
 
     loop {
         Timer::after(Duration::from_millis(500)).await;
@@ -275,7 +273,7 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
     println!("Starting backend_loop\r\n");
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
-    let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
+    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
     socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
     let mut grid_data = GridData {
@@ -306,10 +304,10 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
         };
 
         let mut lines = request_str.split("\r\n");
-        let first_line = lines.nth(0).unwrap_or(&"");
+        let first_line = lines.next().unwrap_or("");
         let mut parts = first_line.split(' ');
-        let method = parts.nth(0).unwrap_or(&"");
-        let path = parts.nth(0).unwrap_or(&"");
+        let method = parts.next().unwrap_or("");
+        let path = parts.next().unwrap_or("");
 
         println!("backend_loop: {:?} {:?}\r\n", method, path);
 
@@ -389,7 +387,7 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
     println!("Starting web_serve_loop\r\n");
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
-    let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
+    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
     socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
     loop {
@@ -415,10 +413,10 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
         };
 
         let mut lines = request_str.split("\r\n");
-        let first_line = lines.nth(0).unwrap_or(&"");
+        let first_line = lines.next().unwrap_or("");
         let mut parts = first_line.split(' ');
-        let method = parts.nth(0).unwrap_or(&"");
-        let path = parts.nth(0).unwrap_or(&"");
+        let method = parts.next().unwrap_or("");
+        let path = parts.next().unwrap_or("");
 
         println!("web_serve_loop: {:?} {:?}\r\n", method, path);
 
@@ -452,13 +450,10 @@ async fn connection(mut controller: WifiController<'static>) {
     println!("start connection task\r\n");
     println!("Device capabilities: {:#?}\r\n", controller.capabilities());
     loop {
-        match esp_wifi::wifi::wifi_state() {
-            WifiState::StaConnected => {
-                // wait until we're no longer connected
-                controller.wait_for_event(WifiEvent::StaDisconnected).await;
-                Timer::after(Duration::from_millis(5000)).await
-            }
-            _ => {}
+        if esp_wifi::wifi::wifi_state() == WifiState::StaConnected {
+            // wait until we're no longer connected
+            controller.wait_for_event(WifiEvent::StaDisconnected).await;
+            Timer::after(Duration::from_millis(5000)).await
         }
         if !matches!(controller.is_started(), Ok(true)) {
             let client_config = Configuration::Client(ClientConfiguration {

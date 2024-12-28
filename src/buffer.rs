@@ -31,6 +31,12 @@ impl<const S: usize> ResponseBuffer<S> {
     }
 }
 
+impl<const S: usize> Default for ResponseBuffer<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const S: usize> Write for ResponseBuffer<S> {
     fn write_str(&mut self, in_str: &str) -> core::fmt::Result {
         let bytes = in_str.as_bytes();
