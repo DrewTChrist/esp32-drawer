@@ -127,13 +127,16 @@ async fn _print_request<'a, const S: usize>(socket: &mut TcpSocket<'a>) {
     }
 }
 
-async fn get_request<'a, 'b>(socket: &mut TcpSocket<'a>, buffer: &'b mut [u8]) -> &'b str {
+async fn get_request<'a, 'b>(
+    socket: &mut TcpSocket<'a>,
+    buffer: &'b mut [u8],
+) -> Result<(), embassy_net::tcp::Error> {
     let mut pos = 0;
     loop {
         match socket.read(buffer).await {
             Ok(0) => {
                 println!("AP read EOF\r\n");
-                break;
+                return Err(embassy_net::tcp::Error::ConnectionReset);
             }
             Ok(len) => match core::str::from_utf8(&buffer[..(pos + len)]) {
                 Ok(to_print) => {
@@ -146,13 +149,10 @@ async fn get_request<'a, 'b>(socket: &mut TcpSocket<'a>, buffer: &'b mut [u8]) -
                     println!("AP read error: {:?}\r\n", e);
                 }
             },
-            Err(e) => {
-                println!("AP read error: {:?}\r\n", e);
-                break;
-            }
+            Err(e) => return Err(e),
         };
     }
-    core::str::from_utf8(buffer).unwrap_or(&"")
+    Ok(())
 }
 
 async fn send_response_status<'a>(socket: &mut TcpSocket<'a>, status_code: usize) {
