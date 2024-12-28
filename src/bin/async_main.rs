@@ -24,8 +24,7 @@ use esp_wifi::{
     EspWifiController,
 };
 
-use serde::{Deserialize, Serialize};
-use serde_big_array::BigArray;
+use serde::{Deserialize, Serialize, Serializer};
 
 /// Crate imports
 use esp32_drawer::buffer::ResponseBuffer;
@@ -53,16 +52,32 @@ const BACKEND_ENDPOINT: IpListenEndpoint = IpListenEndpoint {
     port: 5000,
 };
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
-struct Row {
-    #[serde(with = "BigArray")]
-    data: [u8; 10],
+struct GridData {
+    data: [[u8; 50]; 50],
 }
 
-#[derive(Serialize, Deserialize)]
-struct GridData {
-    #[serde(with = "BigArray")]
-    data: [Row; 10],
+type Coordinate = (usize, usize);
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct CoordinateList {
+    #[serde(serialize_with = "ignore_none")]
+    coords: serde_big_array::Array<Option<Coordinate>, 256>,
+}
+
+impl CoordinateList {
+    fn new() -> Self {
+        Self {
+            coords: serde_big_array::Array([None; 256]),
+        }
+    }
+}
+
+fn ignore_none<S>(array: &[Option<Coordinate>; 256], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let filtered_array = array.iter().filter_map(|x| x.as_ref());
+    serializer.collect_seq(filtered_array)
 }
 
 #[derive(Debug)]
