@@ -278,8 +278,8 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
     let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
     socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
-    let grid_data = GridData {
-        data: [Row { data: [0; 10] }; 10],
+    let mut grid_data = GridData {
+        data: [[0; 50]; 50],
     };
 
     loop {
@@ -291,12 +291,21 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
         }
 
         let mut buffer = [0u8; 512];
-        let mut response_buffer = ResponseBuffer::<256>::new();
-        let request_content = get_request(&mut socket, &mut buffer).await;
+        let mut response_buffer = ResponseBuffer::<1024>::new();
+        if let Err(e) = get_request(&mut socket, &mut buffer).await {
+            println!("backend_loop: {:?}", e);
+            continue;
+        }
 
-        // println!("request_content: {:?}", request_content);
-        let mut lines = request_content.split("\r\n");
+        let request_str = match core::str::from_utf8(&buffer) {
+            Ok(result) => result,
+            Err(e) => {
+                println!("backend_loop: {:?}", e);
+                continue;
+            }
+        };
 
+        let mut lines = request_str.split("\r\n");
         let first_line = lines.nth(0).unwrap_or(&"");
         let mut parts = first_line.split(' ');
         let method = parts.nth(0).unwrap_or(&"");
@@ -307,17 +316,29 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
         match method {
             "GET" => match path {
                 "/data" => {
-                    let mut buffer = [0; (50 * 50) + 1024];
-                    match serde_json_core::to_slice(&grid_data, &mut buffer[..]) {
+                    let mut coordinates = CoordinateList::new();
+                    let mut position = 0;
+                    for (r_idx, row) in grid_data.data.iter().enumerate() {
+                        for (c_idx, col) in row.iter().enumerate() {
+                            if *col != 0 && position < coordinates.coords.len() {
+                                coordinates.coords[position] = Some((r_idx, c_idx));
+                                position += 1;
+                            }
+                        }
+                    }
+                    let mut buffer = [0; 2048];
+                    match serde_json_core::to_slice(&coordinates, &mut buffer[..]) {
                         Ok(len) => {
                             write_response_status(&mut response_buffer, 200);
+                            let _ =
+                                write!(&mut response_buffer, "Content-Type: application/json\r\n");
+                            let _ = write!(&mut response_buffer, "Content-Length: {}\r\n", len);
                             write_response_headers(&mut response_buffer);
-                            if let Err(e) = socket.write_all(&buffer[..len]).await {
-                                println!("AP write error: {:?}\r\n", e);
-                            }
+                            let _ = response_buffer.write(&buffer[..len]);
                             // println!("Bytes converted: {:?}\r\n", len);
                         }
-                        Err(_) => {
+                        Err(e) => {
+                            println!("{:?}", e);
                             write_response_status(&mut response_buffer, 500);
                             write_response_headers(&mut response_buffer);
                         }
@@ -335,6 +356,7 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
                     write_response_headers(&mut response_buffer);
                 }
                 "/clear" => {
+                    grid_data.data = [[0; 50]; 50];
                     write_response_status(&mut response_buffer, 200);
                     write_response_headers(&mut response_buffer);
                 }
@@ -368,14 +390,10 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
     let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
-    // socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
+    socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
     loop {
-        println!("Wait for connection...\r\n");
-
         let r = socket.accept(WEB_ENDPOINT).await;
-
-        println!("Connected...\r\n");
 
         if let Err(e) = r {
             println!("connect error: {:?}\r\n", e);
@@ -383,21 +401,34 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
         }
 
         let mut buffer = [0u8; 512];
-        let request_content = get_request(&mut socket, &mut buffer).await;
+        if let Err(e) = get_request(&mut socket, &mut buffer).await {
+            println!("web_serve_loop: {:?}", e);
+            continue;
+        }
 
-        let mut lines = request_content.split("\r\n");
+        let request_str = match core::str::from_utf8(&buffer) {
+            Ok(result) => result,
+            Err(e) => {
+                println!("web_serve_loop: {:?}", e);
+                continue;
+            }
+        };
 
+        let mut lines = request_str.split("\r\n");
         let first_line = lines.nth(0).unwrap_or(&"");
         let mut parts = first_line.split(' ');
         let method = parts.nth(0).unwrap_or(&"");
         let path = parts.nth(0).unwrap_or(&"");
+
+        println!("web_serve_loop: {:?} {:?}\r\n", method, path);
 
         match method {
             "GET" => match path_to_file(path) {
                 WebServeFile::File(contents) => {
                     send_response_status(&mut socket, 200).await;
                     if let Err(e) = socket.write_all(contents).await {
-                        println!("AP write error: {:?}\r\n", e);
+                        println!("web_serve_loop write error: {:?}\r\n", e);
+                        continue;
                     }
                 }
                 WebServeFile::NotFound => send_response_status(&mut socket, 404).await,
@@ -407,7 +438,7 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
 
         let r = socket.flush().await;
         if let Err(e) = r {
-            println!("AP flush error: {:?}\r\n", e);
+            println!("web_serve_loop flush error: {:?}\r\n", e);
         }
         Timer::after(Duration::from_millis(50)).await;
         socket.close();
