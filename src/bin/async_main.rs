@@ -349,7 +349,25 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
             },
             "POST" => match path {
                 "/data" => {
-                    println!("There is data to receive\r\n");
+                    for line in lines.by_ref() {
+                        println!("{:?}", line);
+                        if line.is_empty() {
+                            break;
+                        }
+                    }
+                    let data = lines.next().unwrap_or("").trim_matches(char::from(0));
+                    println!("{:?}", data);
+                    match serde_json_core::from_str::<[Option<Coordinate>; 10]>(data) {
+                        Ok(result) => {
+                            let coord_list = result.0;
+                            for coordinate in coord_list.iter().flatten() {
+                                grid_data.data[coordinate.0][coordinate.1] = 1;
+                            }
+                        },
+                        Err(e) => {
+                            println!("Error converting coordinates: {:?}", e);
+                        }
+                    }
                     write_response_status(&mut response_buffer, 200);
                     write_response_headers(&mut response_buffer);
                 }
