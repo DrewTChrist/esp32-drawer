@@ -4,7 +4,7 @@
 <head>
   <meta name="description" content="Webpage description goes here" />
   <meta charset="utf-8">
-  <title>Change_me</title>
+  <title>ESP Drawer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="author" content="">
   <link rel="stylesheet" href="css/style.css">
@@ -62,16 +62,20 @@
       const numRows = 50
       return {
         address: `http://${hostname}:5000`,
+        title: `ESP Drawer - (${hostname}:8080)`,
         isDrawing: false,
         isErasing: false,
         numRows,
         numCols,
+        chunks: [],
+        chunk: [],
         cellStates: Array.from(Array(numRows), () => new Array(numCols).fill(null)),
         colors: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'],
         currentColor: '#3b82f6'
       }
     },
     async mounted() {
+      document.title = this.title
       var thisRef = this
       await fetch(`${this.address}/data`, {
         method: "GET",
@@ -79,13 +83,42 @@
       }).then(async (data) => {
         const response = await data.json()
         response.coords.forEach(function (coord) {
-          thisRef.toggleCell(coord[0], coord[1], true)
+          thisRef.cellStates[coord[0]][coord[1]] = thisRef.currentColor
         })
       }).catch((error) => {
         console.log(`Error: ${error}`)
       })
     },
+    watch: {
+      'chunks.length': {
+        async handler(newLength, oldLength) {
+          if (newLength > oldLength) {
+            await this.sendCells()
+          }
+        },
+        deep: true
+      }
+    },
     methods: {
+      async sendCells() {
+        const cellsToSend = this.chunks.pop()
+        const len = cellsToSend.length
+        if (cellsToSend.length < 10) {
+          cellsToSend[9] = null
+          cellsToSend.fill(null, len, 10)
+        }
+        if (cellsToSend) {
+          await fetch(`${this.address}/data`, {
+            method: "POST",
+            body: JSON.stringify(cellsToSend),
+            headers: {},
+          }).then(data => {
+            console.log(data)
+          }).catch(error => {
+            console.log(`Error: ${error}`)
+          })
+        }
+      },
       startDrawing(event) {
         this.isDrawing = true
         this.isErasing = event.button === 2 // Right-click
@@ -93,8 +126,20 @@
       stopDrawing() {
         this.isDrawing = false
         this.isErasing = false
+        if (this.chunk.length > 0) {
+          this.chunks.push(this.chunk)
+          this.chunk = []
+        }
       },
       toggleCell(row, col, isDrawing) {
+        if (!this.cellStates[row][col]) {
+          if (this.chunk.length < 10) {
+            this.chunk.push([row, col])
+          } else {
+            this.chunks.push(this.chunk)
+            this.chunk = [[row, col]]
+          }
+        }
         this.cellStates[row][col] = isDrawing ? this.currentColor : null
       },
       handleCellHover(row, col, event) {
