@@ -204,6 +204,17 @@ async fn send_response_buffer<'a, const S: usize>(
     }
 }
 
+async fn close_socket<'a>(socket: &mut TcpSocket<'a>) {
+    let r = socket.flush().await;
+    if let Err(e) = r {
+        println!("web_serve_loop flush error: {:?}\r\n", e);
+    }
+    Timer::after(Duration::from_millis(500)).await;
+    socket.close();
+    Timer::after(Duration::from_millis(500)).await;
+    socket.abort();
+}
+
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
@@ -286,7 +297,9 @@ async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>)
         let r = socket.accept(BACKEND_ENDPOINT).await;
 
         if let Err(e) = r {
+            // close the socket if it is in at invalid state
             println!("connect error: {:?}\r\n", e);
+            close_socket(&mut socket).await;
             continue;
         }
 
@@ -414,11 +427,14 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
         let r = socket.accept(WEB_ENDPOINT).await;
 
         if let Err(e) = r {
+            // close the socket if it is in at invalid state
             println!("connect error: {:?}\r\n", e);
+            close_socket(&mut socket).await;
             continue;
         }
 
         let mut buffer = [0u8; 512];
+        let mut response_buffer = ResponseBuffer::<512>::new();
         if let Err(e) = get_request(&mut socket, &mut buffer).await {
             println!("web_serve_loop: {:?}", e);
             continue;
