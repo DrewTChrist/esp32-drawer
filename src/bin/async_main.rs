@@ -80,12 +80,14 @@ where
 
 #[derive(Debug)]
 enum WebServeFile<'a> {
-    File(&'a [u8]),
+    File(&'a [u8], &'a str),
     NotFound,
 }
 
-const INDEX: WebServeFile<'static> = WebServeFile::File(include_bytes!("../index.html"));
-const CSS: WebServeFile<'static> = WebServeFile::File(include_bytes!("../css/style.css"));
+const INDEX: WebServeFile<'static> =
+    WebServeFile::File(include_bytes!("../index.html"), "text/html");
+const CSS: WebServeFile<'static> =
+    WebServeFile::File(include_bytes!("../css/style.css"), "text/css");
 
 fn path_to_file(path: &str) -> WebServeFile {
     match path {
@@ -153,7 +155,7 @@ async fn get_request<'a, 'b>(
     Ok(())
 }
 
-async fn send_response_status<'a>(socket: &mut TcpSocket<'a>, status_code: usize) {
+async fn _send_response_status<'a>(socket: &mut TcpSocket<'a>, status_code: usize) {
     let mut status: Option<&[u8]> = None;
     match status_code {
         200 => status = Some(b"HTTP/1.1 200 OK\r\n\r\n"),
@@ -438,27 +440,48 @@ async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>
 
         println!("web_serve_loop: {:?} {:?}\r\n", method, path);
 
+        let mut file_bytes = None;
+
         match method {
             "GET" => match path_to_file(path) {
-                WebServeFile::File(contents) => {
-                    send_response_status(&mut socket, 200).await;
-                    if let Err(e) = socket.write_all(contents).await {
-                        println!("web_serve_loop write error: {:?}\r\n", e);
-                        continue;
-                    }
+                WebServeFile::File(contents, content_type) => {
+                    write_response_status(&mut response_buffer, 200);
+                    let _ = write!(&mut response_buffer, "Content-Type: {}\r\n", content_type);
+                    let _ = write!(
+                        &mut response_buffer,
+                        "Content-Length: {}\r\n",
+                        contents.len()
+                    );
+                    let _ = write!(&mut response_buffer, "\r\n");
+                    file_bytes = Some(contents);
                 }
-                WebServeFile::NotFound => send_response_status(&mut socket, 404).await,
+                WebServeFile::NotFound => {
+                    write_response_status(&mut response_buffer, 404);
+                    let _ = write!(&mut response_buffer, "\r\n");
+                }
             },
-            _ => send_response_status(&mut socket, 404).await,
+            _ => {
+                write_response_status(&mut response_buffer, 404);
+                let _ = write!(&mut response_buffer, "\r\n");
+            }
+        }
+
+        send_response_buffer(&mut socket, response_buffer).await;
+
+        if let Some(bytes) = file_bytes {
+            if let Err(e) = socket.write_all(bytes).await {
+                println!("web_serve_loop write error: {:?}\r\n", e);
+                continue;
+            }
         }
 
         let r = socket.flush().await;
         if let Err(e) = r {
             println!("web_serve_loop flush error: {:?}\r\n", e);
         }
-        Timer::after(Duration::from_millis(50)).await;
+        Timer::after(Duration::from_millis(500)).await;
         socket.close();
-        Timer::after(Duration::from_millis(50)).await;
+        Timer::after(Duration::from_millis(500)).await;
         socket.abort();
     }
 }
