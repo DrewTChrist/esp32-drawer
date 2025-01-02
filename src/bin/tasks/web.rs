@@ -9,16 +9,31 @@ use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
 /// Crate imports
 use crate::close_socket;
 use crate::get_request;
-use crate::path_to_file;
 use crate::send_response_buffer;
-use crate::write_response_headers;
 use crate::write_response_status;
-use crate::WebServeFile;
 use crate::WEB_ENDPOINT;
 use esp32_drawer::buffer::ResponseBuffer;
 
+#[derive(Debug)]
+enum WebServeFile<'a> {
+    File(&'a [u8], &'a str),
+    NotFound,
+}
+
+const INDEX: WebServeFile<'static> =
+    WebServeFile::File(include_bytes!("../../index.html"), "text/html");
+const CSS: WebServeFile<'static> =
+    WebServeFile::File(include_bytes!("../../css/style.css"), "text/css");
+
+fn path_to_file(path: &str) -> WebServeFile {
+    match path {
+        "/" => INDEX,
+        "/css/style.css" => CSS,
+        _ => WebServeFile::NotFound,
+    }
+}
+
 #[embassy_executor::task]
-// async fn web_serve_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>) {
 pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>) {
     println!("Starting web_serve_loop\r\n");
     let mut rx_buffer = [0; 4096];

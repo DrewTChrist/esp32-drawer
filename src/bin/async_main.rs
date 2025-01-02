@@ -15,14 +15,9 @@ use esp_hal::{prelude::*, rng::Rng, timer::timg::TimerGroup};
 use esp_println::println;
 use esp_wifi::{
     init,
-    wifi::{
-        ClientConfiguration, Configuration, WifiController, WifiDevice, WifiEvent, WifiStaDevice,
-        WifiState,
-    },
+    wifi::{WifiDevice, WifiStaDevice},
     EspWifiController,
 };
-
-use serde::{Deserialize, Serialize, Serializer};
 
 /// Crate imports
 mod tasks;
@@ -51,83 +46,6 @@ const BACKEND_ENDPOINT: IpListenEndpoint = IpListenEndpoint {
     port: 5000,
 };
 
-struct GridData {
-    data: [[u8; 50]; 50],
-}
-
-type Coordinate = (usize, usize);
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-struct CoordinateList {
-    #[serde(serialize_with = "ignore_none")]
-    coords: serde_big_array::Array<Option<Coordinate>, 256>,
-}
-
-impl CoordinateList {
-    fn new() -> Self {
-        Self {
-            coords: serde_big_array::Array([None; 256]),
-        }
-    }
-}
-
-fn ignore_none<S>(array: &[Option<Coordinate>; 256], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let filtered_array = array.iter().filter_map(|x| x.as_ref());
-    serializer.collect_seq(filtered_array)
-}
-
-#[derive(Debug)]
-enum WebServeFile<'a> {
-    File(&'a [u8], &'a str),
-    NotFound,
-}
-
-const INDEX: WebServeFile<'static> =
-    WebServeFile::File(include_bytes!("../index.html"), "text/html");
-const CSS: WebServeFile<'static> =
-    WebServeFile::File(include_bytes!("../css/style.css"), "text/css");
-
-fn path_to_file(path: &str) -> WebServeFile {
-    match path {
-        "/" => INDEX,
-        "/css/style.css" => CSS,
-        _ => WebServeFile::NotFound,
-    }
-}
-
-async fn _print_request<'a, const S: usize>(socket: &mut TcpSocket<'a>) {
-    let mut buffer = [0; S];
-    let mut pos = 0;
-    loop {
-        match socket.read(&mut buffer).await {
-            Ok(0) => {
-                println!("AP read EOF\r\n");
-                break;
-            }
-            Ok(len) => match core::str::from_utf8(&buffer[..(pos + len)]) {
-                Ok(to_print) => {
-                    if to_print.contains("\r\n\r\n") {
-                        println!("{}\r\n", to_print);
-                        println!();
-                        break;
-                    }
-                    pos += len;
-                }
-                Err(e) => {
-                    println!("AP read error: {:?}\r\n", e);
-                }
-            },
-            Err(e) => {
-                println!("AP read error: {:?}\r\n", e);
-                break;
-            }
-        };
-    }
-}
-
 async fn get_request<'a, 'b>(
     socket: &mut TcpSocket<'a>,
     buffer: &'b mut [u8],
@@ -154,21 +72,6 @@ async fn get_request<'a, 'b>(
         };
     }
     Ok(())
-}
-
-async fn _send_response_status<'a>(socket: &mut TcpSocket<'a>, status_code: usize) {
-    let mut status: Option<&[u8]> = None;
-    match status_code {
-        200 => status = Some(b"HTTP/1.1 200 OK\r\n\r\n"),
-        500 => status = Some(b"HTTP/1.1 500 Internal Server Error\r\n\r\n"),
-        404 => status = Some(b"HTTP/1.1 404 Not Found\r\n\r\n"),
-        _ => {}
-    }
-    if let Some(response) = status {
-        if let Err(e) = socket.write_all(response).await {
-            println!("AP write error: {:?}\r\n", e);
-        }
-    }
 }
 
 fn write_response_status<const S: usize>(
@@ -255,8 +158,8 @@ async fn main(spawner: Spawner) -> ! {
         )
     );
 
-    spawner.spawn(connection(controller)).ok();
-    spawner.spawn(net_task(stack)).ok();
+    spawner.spawn(tasks::connection(controller)).ok();
+    spawner.spawn(tasks::net_task(stack)).ok();
 
     loop {
         if stack.is_link_up() {
@@ -280,42 +183,4 @@ async fn main(spawner: Spawner) -> ! {
     loop {
         Timer::after(Duration::from_millis(500)).await;
     }
-}
-
-#[embassy_executor::task]
-async fn connection(mut controller: WifiController<'static>) {
-    println!("start connection task\r\n");
-    println!("Device capabilities: {:#?}\r\n", controller.capabilities());
-    loop {
-        if esp_wifi::wifi::wifi_state() == WifiState::StaConnected {
-            // wait until we're no longer connected
-            controller.wait_for_event(WifiEvent::StaDisconnected).await;
-            Timer::after(Duration::from_millis(5000)).await
-        }
-        if !matches!(controller.is_started(), Ok(true)) {
-            let client_config = Configuration::Client(ClientConfiguration {
-                ssid: SSID.try_into().unwrap(),
-                password: PASSWORD.try_into().unwrap(),
-                ..Default::default()
-            });
-            controller.set_configuration(&client_config).unwrap();
-            println!("Starting wifi\r\n");
-            controller.start_async().await.unwrap();
-            println!("Wifi started!\r\n");
-        }
-        println!("About to connect...\r\n");
-
-        match controller.connect_async().await {
-            Ok(_) => println!("Wifi connected!\r\n"),
-            Err(e) => {
-                println!("Failed to connect to wifi: {e:?}\r\n");
-                Timer::after(Duration::from_millis(5000)).await
-            }
-        }
-    }
-}
-
-#[embassy_executor::task]
-async fn net_task(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>) {
-    stack.run().await
 }

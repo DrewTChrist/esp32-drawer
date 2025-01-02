@@ -5,6 +5,7 @@ use embassy_time::{Duration, Timer};
 // use embedded_io_async::Write as EmbeddedIoWrite;
 use esp_println::println;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
+use serde::{Deserialize, Serialize, Serializer};
 
 /// Crate imports
 use crate::close_socket;
@@ -12,14 +13,38 @@ use crate::get_request;
 use crate::send_response_buffer;
 use crate::write_response_headers;
 use crate::write_response_status;
-use crate::Coordinate;
-use crate::CoordinateList;
-use crate::GridData;
 use crate::BACKEND_ENDPOINT;
 use esp32_drawer::buffer::ResponseBuffer;
 
+struct GridData {
+    data: [[u8; 50]; 50],
+}
+
+type Coordinate = (usize, usize);
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct CoordinateList {
+    #[serde(serialize_with = "ignore_none")]
+    coords: serde_big_array::Array<Option<Coordinate>, 256>,
+}
+
+impl CoordinateList {
+    fn new() -> Self {
+        Self {
+            coords: serde_big_array::Array([None; 256]),
+        }
+    }
+}
+
+fn ignore_none<S>(array: &[Option<Coordinate>; 256], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let filtered_array = array.iter().filter_map(|x| x.as_ref());
+    serializer.collect_seq(filtered_array)
+}
+
 #[embassy_executor::task]
-// async fn backend_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>) {
 pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>) {
     println!("Starting backend_loop\r\n");
     let mut rx_buffer = [0; 4096];
