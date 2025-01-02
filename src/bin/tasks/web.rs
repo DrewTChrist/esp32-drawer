@@ -7,12 +7,12 @@ use esp_println::println;
 use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
 
 /// Crate imports
-use crate::close_socket;
-use crate::get_request;
-use crate::send_response_buffer;
-use crate::write_response_status;
 use crate::WEB_ENDPOINT;
 use esp32_drawer::buffer::ResponseBuffer;
+use esp32_drawer::close_socket;
+use esp32_drawer::get_request;
+use esp32_drawer::send_response_buffer;
+use esp32_drawer::write_response_status;
 
 #[derive(Debug)]
 enum WebServeFile<'a> {
