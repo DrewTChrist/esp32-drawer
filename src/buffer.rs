@@ -1,5 +1,30 @@
 use core::fmt::Write;
 
+#[derive(Clone, Copy)]
+pub struct RequestBuffer<const S: usize> {
+    pub buf: [u8; S],
+}
+
+impl<const S: usize> Default for RequestBuffer<S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const S: usize> RequestBuffer<S> {
+    pub fn new() -> Self {
+        Self { buf: [0; S] }
+    }
+
+    pub fn buffer(&self) -> &[u8] {
+        &self.buf
+    }
+
+    pub fn buffer_mut(&mut self) -> &mut [u8] {
+        &mut self.buf
+    }
+}
+
 pub struct ResponseBuffer<const S: usize> {
     buf: [u8; S],
     pos: usize,

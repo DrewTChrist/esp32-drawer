@@ -8,7 +8,7 @@ use esp_wifi::wifi::{WifiDevice, WifiStaDevice};
 
 /// Crate imports
 use crate::WEB_ENDPOINT;
-use esp32_drawer::buffer::ResponseBuffer;
+use esp32_drawer::buffer::{RequestBuffer, ResponseBuffer};
 use esp32_drawer::close_socket;
 use esp32_drawer::get_request;
 use esp32_drawer::send_response_buffer;
@@ -51,14 +51,15 @@ pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
             continue;
         }
 
-        let mut buffer = [0u8; 512];
+        // let mut buffer = [0u8; 512];
+        let mut request_buffer = RequestBuffer::<512>::new();
         let mut response_buffer = ResponseBuffer::<512>::new();
-        if let Err(e) = get_request(&mut socket, &mut buffer).await {
+        if let Err(e) = get_request(&mut socket, &mut request_buffer).await {
             println!("web_serve_loop: {:?}", e);
             continue;
         }
 
-        let request_str = match core::str::from_utf8(&buffer) {
+        let request_str = match core::str::from_utf8(request_buffer.buffer()) {
             Ok(result) => result,
             Err(e) => {
                 println!("web_serve_loop: {:?}", e);

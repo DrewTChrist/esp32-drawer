@@ -8,18 +8,80 @@ use embassy_time::{Duration, Timer};
 use embedded_io_async::Write;
 use esp_println::println;
 
-pub async fn get_request<'a, 'b>(
+use crate::buffer::RequestBuffer;
+
+#[derive(Clone, Copy)]
+pub struct Request<'a, const S: usize> {
+    buffer: Option<&'a RequestBuffer<S>>,
+    rb: Option<&'a [u8]>,
+    pub method: Option<&'a str>,
+    pub path: Option<&'a str>,
+    pub headers: [Option<&'a str>; 32],
+    pub data: Option<&'a str>,
+}
+
+impl<'a, const S: usize> Default for Request<'a, S> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a, const S: usize> Request<'a, S> {
+    pub fn new() -> Self {
+        Self {
+            buffer: None,
+            rb: None,
+            method: None,
+            path: None,
+            headers: [None; 32],
+            data: None,
+        }
+    }
+
+    pub fn set_request_buffer(&mut self, buffer: &'a RequestBuffer<S>) {
+        self.buffer = Some(buffer);
+        self.set_buffer();
+    }
+
+    fn set_buffer(&mut self) {
+        self.rb = Some(&self.buffer.unwrap().buf);
+    }
+
+    pub fn parse_request(&mut self) {
+        if let Some(buffer) = self.rb {
+            if let Ok(result) = core::str::from_utf8(buffer) {
+                let mut lines = result.split("\r\n");
+                let first_line = lines.next().unwrap_or("");
+                let mut parts = first_line.split(' ');
+                let method = parts.next().unwrap_or("");
+                let path = parts.next().unwrap_or("");
+                for (pos, line) in lines.by_ref().enumerate() {
+                    if line.is_empty() {
+                        break;
+                    }
+                    self.headers[pos] = Some(line);
+                }
+                let data = lines.next().unwrap_or("").trim_matches(char::from(0));
+                self.method = Some(method);
+                self.path = Some(path);
+                self.data = Some(data);
+            }
+        }
+    }
+}
+
+pub async fn get_request<'a, const S: usize>(
     socket: &mut TcpSocket<'a>,
-    buffer: &'b mut [u8],
+    request_buffer: &mut RequestBuffer<S>,
 ) -> Result<(), embassy_net::tcp::Error> {
     let mut pos = 0;
     loop {
-        match socket.read(buffer).await {
+        match socket.read(request_buffer.buffer_mut()).await {
             Ok(0) => {
                 println!("AP read EOF\r\n");
                 return Err(embassy_net::tcp::Error::ConnectionReset);
             }
-            Ok(len) => match core::str::from_utf8(&buffer[..(pos + len)]) {
+            Ok(len) => match core::str::from_utf8(&request_buffer.buffer()[..(pos + len)]) {
                 Ok(to_print) => {
                     if to_print.contains("\r\n\r\n") {
                         break;

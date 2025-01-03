@@ -9,12 +9,13 @@ use serde::{Deserialize, Serialize, Serializer};
 
 /// Crate imports
 use crate::BACKEND_ENDPOINT;
-use esp32_drawer::buffer::ResponseBuffer;
+use esp32_drawer::buffer::{RequestBuffer, ResponseBuffer};
 use esp32_drawer::close_socket;
 use esp32_drawer::get_request;
 use esp32_drawer::send_response_buffer;
 use esp32_drawer::write_response_headers;
 use esp32_drawer::write_response_status;
+use esp32_drawer::Request;
 
 struct GridData {
     data: [[u8; 50]; 50],
@@ -66,32 +67,22 @@ pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
             continue;
         }
 
-        let mut buffer = [0u8; 512];
+        let mut request_buffer = RequestBuffer::<512>::new();
         let mut response_buffer = ResponseBuffer::<1024>::new();
-        if let Err(e) = get_request(&mut socket, &mut buffer).await {
+        if let Err(e) = get_request(&mut socket, &mut request_buffer).await {
             println!("backend_loop: {:?}", e);
             continue;
         }
 
-        let request_str = match core::str::from_utf8(&buffer) {
-            Ok(result) => result,
-            Err(e) => {
-                println!("backend_loop: {:?}", e);
-                continue;
-            }
-        };
+        let mut request: Request<512> = Request::new();
+        request.set_request_buffer(&request_buffer);
+        request.parse_request();
 
-        let mut lines = request_str.split("\r\n");
-        let first_line = lines.next().unwrap_or("");
-        let mut parts = first_line.split(' ');
-        let method = parts.next().unwrap_or("");
-        let path = parts.next().unwrap_or("");
+        println!("backend_loop: {:?} {:?}\r\n", request.method, request.path);
 
-        println!("backend_loop: {:?} {:?}\r\n", method, path);
-
-        match method {
-            "GET" => match path {
-                "/data" => {
+        match request.method {
+            Some("GET") => match request.path {
+                Some("/data") => {
                     let mut coordinates = CoordinateList::new();
                     let mut position = 0;
                     for (r_idx, row) in grid_data.data.iter().enumerate() {
@@ -125,17 +116,11 @@ pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
                     write_response_headers(&mut response_buffer);
                 }
             },
-            "POST" => match path {
-                "/data" => {
-                    for line in lines.by_ref() {
-                        println!("{:?}", line);
-                        if line.is_empty() {
-                            break;
-                        }
-                    }
-                    let data = lines.next().unwrap_or("").trim_matches(char::from(0));
-                    println!("{:?}", data);
-                    match serde_json_core::from_str::<[Option<Coordinate>; 10]>(data) {
+            Some("POST") => match request.path {
+                Some("/data") => {
+                    match serde_json_core::from_str::<[Option<Coordinate>; 10]>(
+                        request.data.unwrap(),
+                    ) {
                         Ok(result) => {
                             let coord_list = result.0;
                             for coordinate in coord_list.iter().flatten() {
@@ -149,7 +134,7 @@ pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
                     write_response_status(&mut response_buffer, 200);
                     write_response_headers(&mut response_buffer);
                 }
-                "/clear" => {
+                Some("/clear") => {
                     grid_data.data = [[0; 50]; 50];
                     write_response_status(&mut response_buffer, 200);
                     write_response_headers(&mut response_buffer);
