@@ -15,7 +15,7 @@ to a screen connected to the ESP32.
 
 ## Usage
 
-This project makes use of an ESP32 and an ST7789 driven screen. The ESP32 is
+This project makes use of an ESP32 and an ST7735 driven screen. The ESP32 is
 **not** configured as an access point so a network connection is also required
 and the web application is to be accessed through the network.
 

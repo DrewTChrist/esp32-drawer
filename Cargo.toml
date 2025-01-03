@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+st7735-lcd = "0.10.0"
+embedded-hal-bus = "0.2.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-json-core = "0.6.0"
 serde-big-array = "0.5.1"

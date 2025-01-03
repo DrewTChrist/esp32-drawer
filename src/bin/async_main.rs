@@ -7,13 +7,25 @@ use embassy_net::{IpListenEndpoint, Stack, StackResources};
 use embassy_time::{Duration, Timer};
 use esp_alloc as _;
 use esp_backtrace as _;
-use esp_hal::{prelude::*, rng::Rng, timer::timg::TimerGroup};
+use esp_hal::{
+    gpio::{Level, Output},
+    prelude::*,
+    rng::Rng,
+    spi::{
+        master::{Config, Spi},
+        SpiMode,
+    },
+    timer::timg::TimerGroup,
+};
 use esp_println::println;
 use esp_wifi::{
     init,
     wifi::{WifiDevice, WifiStaDevice},
     EspWifiController,
 };
+
+use embedded_hal_bus::spi::ExclusiveDevice;
+use st7735_lcd::ST7735;
 
 /// Crate imports
 mod tasks;
@@ -49,6 +61,29 @@ async fn main(spawner: Spawner) -> ! {
     let peripherals = esp_hal::init(config);
 
     esp_alloc::heap_allocator!(72 * 1024);
+
+    let sclk = peripherals.GPIO5;
+    let miso = peripherals.GPIO19;
+    let mosi = peripherals.GPIO18;
+    let cs = Output::new(peripherals.GPIO16, Level::High);
+    let dc = Output::new(peripherals.GPIO17, Level::High);
+    let rst = Output::new(peripherals.GPIO21, Level::High);
+
+    let spi = Spi::new_with_config(
+        peripherals.SPI2,
+        Config {
+            frequency: 100.kHz(),
+            mode: SpiMode::Mode0,
+            ..Config::default()
+        },
+    )
+    .with_sck(sclk)
+    .with_mosi(mosi)
+    .with_miso(miso);
+
+    let spi_device = ExclusiveDevice::new_no_delay(spi, cs).unwrap();
+
+    let _st7735 = ST7735::new(spi_device, dc, rst, true, false, 100, 100);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let mut rng = Rng::new(peripherals.RNG);
