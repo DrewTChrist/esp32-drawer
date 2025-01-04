@@ -1,4 +1,5 @@
 pub mod backend;
+pub mod screen;
 pub mod web;
 
 use embassy_net::Stack;

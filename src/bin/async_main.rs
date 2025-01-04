@@ -4,10 +4,12 @@
 /// External imports
 use embassy_executor::Spawner;
 use embassy_net::{IpListenEndpoint, Stack, StackResources};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::{
+    delay::Delay,
     gpio::{Level, Output},
     prelude::*,
     rng::Rng,
@@ -23,12 +25,15 @@ use esp_wifi::{
     wifi::{WifiDevice, WifiStaDevice},
     EspWifiController,
 };
+use static_cell::StaticCell;
 
+use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use st7735_lcd::ST7735;
 
 /// Crate imports
 mod tasks;
+use esp32_drawer::ScreenSignal;
 
 // When you are okay with using a nightly compiler it's better to use https://docs.rs/static_cell/2.1.0/static_cell/macro.make_static.html
 macro_rules! mk_static {
@@ -68,22 +73,34 @@ async fn main(spawner: Spawner) -> ! {
     let cs = Output::new(peripherals.GPIO16, Level::High);
     let dc = Output::new(peripherals.GPIO17, Level::High);
     let rst = Output::new(peripherals.GPIO21, Level::High);
+    let mut lcd_led = Output::new(peripherals.GPIO14, Level::High);
+    lcd_led.set_high();
 
     let spi = Spi::new_with_config(
         peripherals.SPI2,
         Config {
-            frequency: 100.kHz(),
+            frequency: 16000.kHz(),
             mode: SpiMode::Mode0,
             ..Config::default()
         },
     )
     .with_sck(sclk)
     .with_mosi(mosi)
-    .with_miso(miso);
+    .with_miso(miso)
+    .into_async();
 
     let spi_device = ExclusiveDevice::new_no_delay(spi, cs).unwrap();
 
-    let _st7735 = ST7735::new(spi_device, dc, rst, true, false, 100, 100);
+    let mut start_screen_task = true;
+    let mut delay = Delay::new();
+    let mut st7735 = ST7735::new(spi_device, dc, rst, true, false, 160, 128);
+    let initialize = st7735.init(&mut delay);
+    let orientation = st7735.set_orientation(&st7735_lcd::Orientation::Landscape);
+    let _cleared = st7735.clear(Rgb565::BLACK);
+
+    if initialize.is_err() || orientation.is_err() {
+        start_screen_task = false;
+    }
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let mut rng = Rng::new(peripherals.RNG);
@@ -134,8 +151,15 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(Duration::from_millis(500)).await;
     }
 
+    type SignalType = StaticCell<Signal<NoopRawMutex, ScreenSignal>>;
+    static SIGNAL: SignalType = StaticCell::new();
+    let signal = &*SIGNAL.init(Signal::new());
+
     spawner.spawn(tasks::web::task_loop(stack)).ok();
-    spawner.spawn(tasks::backend::task_loop(stack)).ok();
+    spawner.spawn(tasks::backend::task_loop(stack, signal)).ok();
+    if start_screen_task {
+        spawner.spawn(tasks::screen::task_loop(st7735, signal)).ok();
+    }
 
     loop {
         Timer::after(Duration::from_millis(500)).await;

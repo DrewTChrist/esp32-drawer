@@ -73,7 +73,7 @@ pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
         let method = parts.next().unwrap_or("");
         let path = parts.next().unwrap_or("");
 
-        println!("web_serve_loop: {:?} {:?}\r\n", method, path);
+        // println!("web_serve_loop: {:?} {:?}\r\n", method, path);
 
         let mut file_bytes = None;
 

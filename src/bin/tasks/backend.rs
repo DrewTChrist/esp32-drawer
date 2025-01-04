@@ -1,6 +1,7 @@
 /// Core imports
 use core::fmt::Write;
 use embassy_net::{tcp::TcpSocket, Stack};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
 // use embedded_io_async::Write as EmbeddedIoWrite;
 use esp_println::println;
@@ -15,10 +16,12 @@ use esp32_drawer::get_request;
 use esp32_drawer::send_response_buffer;
 use esp32_drawer::write_response_headers;
 use esp32_drawer::write_response_status;
+use esp32_drawer::Coordinates;
 use esp32_drawer::Request;
+use esp32_drawer::ScreenSignal;
 
 struct GridData {
-    data: [[u8; 50]; 50],
+    data: [[u8; 80]; 64],
 }
 
 type Coordinate = (usize, usize);
@@ -46,7 +49,10 @@ where
 }
 
 #[embassy_executor::task]
-pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>) {
+pub async fn task_loop(
+    stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>,
+    signal: &'static Signal<NoopRawMutex, ScreenSignal>,
+) {
     println!("Starting backend_loop\r\n");
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
@@ -54,7 +60,7 @@ pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
     socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
     let mut grid_data = GridData {
-        data: [[0; 50]; 50],
+        data: [[0; 80]; 64],
     };
 
     loop {
@@ -78,7 +84,7 @@ pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
         request.set_request_buffer(&request_buffer);
         request.parse_request();
 
-        println!("backend_loop: {:?} {:?}\r\n", request.method, request.path);
+        // println!("backend_loop: {:?} {:?}\r\n", request.method, request.path);
 
         match request.method {
             Some("GET") => match request.path {
@@ -118,11 +124,10 @@ pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
             },
             Some("POST") => match request.path {
                 Some("/data") => {
-                    match serde_json_core::from_str::<[Option<Coordinate>; 10]>(
-                        request.data.unwrap(),
-                    ) {
+                    match serde_json_core::from_str::<Coordinates>(request.data.unwrap()) {
                         Ok(result) => {
                             let coord_list = result.0;
+                            signal.signal(ScreenSignal::Coordinate(coord_list));
                             for coordinate in coord_list.iter().flatten() {
                                 grid_data.data[coordinate.0][coordinate.1] = 1;
                             }
@@ -135,7 +140,8 @@ pub async fn task_loop(stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
                     write_response_headers(&mut response_buffer);
                 }
                 Some("/clear") => {
-                    grid_data.data = [[0; 50]; 50];
+                    grid_data.data = [[0; 80]; 64];
+                    signal.signal(ScreenSignal::Clear);
                     write_response_status(&mut response_buffer, 200);
                     write_response_headers(&mut response_buffer);
                 }

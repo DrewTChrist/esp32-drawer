@@ -10,6 +10,13 @@ use esp_println::println;
 
 use crate::buffer::RequestBuffer;
 
+pub type Coordinates = [Option<(usize, usize)>; 10];
+
+pub enum ScreenSignal {
+    Coordinate(Coordinates),
+    Clear,
+}
+
 #[derive(Clone, Copy)]
 pub struct Request<'a, const S: usize> {
     buffer: Option<&'a RequestBuffer<S>>,
